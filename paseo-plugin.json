@@ -1,0 +1,9 @@
+{
+  "id": "wsl-open",
+  "name": "Open in Windows (WSL)",
+  "description": "Open a workspace from a WSL daemon in VS Code (Remote - WSL) or Windows Explorer from the workspace header.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.11.4"
+  }
+}
