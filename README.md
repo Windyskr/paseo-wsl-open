@@ -12,8 +12,10 @@ The same actions are in the Command Center (Ctrl+K).
 ## When the button appears
 
 - The client is Paseo Desktop on Windows. Mobile, browser, and macOS/Linux clients show nothing.
-- The daemon reports it runs in WSL with working Windows interop (`wslpath` resolves a Windows path).
-- Each action appears only if its launcher (`code` or `explorer.exe`) is on the daemon's `PATH`.
+- The daemon runs in WSL with working Windows interop. This also works when the daemon is started by systemd, which has no Windows directories on its `PATH`.
+- Each action appears only if Windows can find its launcher (`code` or `explorer.exe`) on the Windows `PATH`.
+
+If the button is missing, `paseo plugin logs wsl-open` shows which actions the daemon found.
 
 ## Install
 

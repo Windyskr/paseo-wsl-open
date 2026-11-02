@@ -1,14 +1,19 @@
 import { execFile, spawn } from "node:child_process";
-import { access, constants, readFile, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { stat } from "node:fs/promises";
+import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
-import type { OpenTarget, openInWindowsRpc } from "../shared/open";
+import { openTargets, type OpenTarget, type openInWindowsRpc } from "../shared/open";
 
 const execFileAsync = promisify(execFile);
 
-async function toWindowsPath(directory: string): Promise<string> {
-  const { stdout } = await execFileAsync("wslpath", ["-w", directory]);
+const windowsCommands: Record<OpenTarget, string> = {
+  vscode: "code",
+  explorer: "explorer.exe",
+};
+
+async function wslpath(flag: "-u" | "-w", path: string): Promise<string> {
+  const { stdout } = await execFileAsync("wslpath", [flag, path]);
   return stdout.trim();
 }
 
@@ -18,44 +23,42 @@ function distroName(windowsPath: string): string | null {
   return match?.[1] ?? process.env.WSL_DISTRO_NAME ?? null;
 }
 
-async function onPath(command: string): Promise<boolean> {
-  for (const dir of (process.env.PATH ?? "").split(":")) {
-    if (!dir) continue;
-    try {
-      await access(join(dir, command), constants.X_OK);
-      return true;
-    } catch {}
+// WSL only adds the Windows PATH to login sessions, so a daemon started by systemd cannot find
+// these commands on its own PATH. Asking Windows works either way and proves interop works.
+// Resolves to null outside WSL, without interop, or when the command is not installed.
+async function locateOnWindows(target: OpenTarget): Promise<string | null> {
+  const command = windowsCommands[target];
+  try {
+    const cmd = await wslpath("-u", "C:\\Windows\\System32\\cmd.exe");
+    const { stdout } = await execFileAsync(cmd, ["/c", `chcp 65001 >nul & where ${command}`], {
+      cwd: dirname(cmd),
+      timeout: 10_000,
+    });
+    // `where code` also lists code.cmd; the extensionless script is the WSL-aware launcher.
+    const match = stdout
+      .split(/\r?\n/)
+      .find((line) => line.toLowerCase().endsWith(`\\${command}`));
+    return match ? await wslpath("-u", match) : null;
+  } catch {
+    return null;
   }
-  return false;
-}
-
-async function isWsl(): Promise<boolean> {
-  if (!process.env.WSL_INTEROP && !process.env.WSL_DISTRO_NAME) {
-    const version = await readFile("/proc/version", "utf8").catch(() => "");
-    if (!/microsoft/i.test(version)) return false;
-  }
-  return onPath("wslpath");
 }
 
 export async function availableTargets(): Promise<OpenTarget[]> {
-  if (!(await isWsl())) return [];
-  try {
-    // Proves Windows interop works, not just that the binaries exist.
-    if (!distroName(await toWindowsPath("/"))) return [];
-  } catch {
-    return [];
-  }
-  const targets: OpenTarget[] = [];
-  if (await onPath("code")) targets.push("vscode");
-  if (await onPath("explorer.exe")) targets.push("explorer");
-  return targets;
+  const located = await Promise.all(openTargets.map(locateOnWindows));
+  return openTargets.filter((_, index) => located[index] !== null);
 }
 
 // Windows GUI launchers block or return odd exit codes (explorer.exe exits 1 on success),
 // so detach and only report spawn failures.
-function launch(command: string, args: string[]): Promise<void> {
+function launch(command: string, args: string[], env = process.env): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { detached: true, stdio: "ignore", cwd: "/mnt/c" });
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+      cwd: dirname(command),
+      env,
+    });
     child.once("error", reject);
     child.once("spawn", () => {
       child.unref();
@@ -71,15 +74,22 @@ export async function openInWindows({
   if (!isAbsolute(directory) || !(await stat(directory)).isDirectory()) {
     throw new Error(`Not a directory: ${directory}`);
   }
-  const windowsPath = await toWindowsPath(directory);
+  const windowsPath = await wslpath("-w", directory);
+  const command = await locateOnWindows(target);
+  if (!command) throw new Error(`Cannot find ${windowsCommands[target]} on Windows`);
 
   if (target === "explorer") {
-    await launch("explorer.exe", [windowsPath]);
+    await launch(command, [windowsPath]);
     return { windowsPath };
   }
 
   const distro = distroName(windowsPath);
   if (!distro) throw new Error("Cannot determine the WSL distro name");
-  await launch("code", ["--remote", `wsl+${distro}`, directory]);
+  // VS Code's launcher script only takes its WSL path when this variable is set,
+  // and a daemon started by systemd does not have it.
+  await launch(command, ["--remote", `wsl+${distro}`, directory], {
+    ...process.env,
+    WSL_DISTRO_NAME: distro,
+  });
   return { windowsPath };
 }

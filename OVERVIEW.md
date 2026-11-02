@@ -9,7 +9,7 @@ Paseo Desktop only shows its built-in open-in-editor button for its own bundled 
 
 ## When the menu appears
 
-The menu only appears in Paseo Desktop on Windows. Mobile, browser, macOS and Linux clients show nothing. Each action appears only when the daemon confirms it can launch it: the daemon must run in WSL with working Windows interop, and `code` or `explorer.exe` must be on its `PATH`.
+The menu only appears in Paseo Desktop on Windows. Mobile, browser, macOS and Linux clients show nothing. Each action appears only when the daemon confirms it can launch it: the daemon must run in WSL with working Windows interop, and Windows must find `code` or `explorer.exe` on its own `PATH`. This also works when the daemon is started by systemd.
 
 ## Setup
 
