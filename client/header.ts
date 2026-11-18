@@ -7,6 +7,7 @@ import { openInWindowsRpc, type OpenTarget } from "../shared/open";
 
 export const targetLabels: Record<OpenTarget, { title: string; icon: string }> = {
   vscode: { title: "Open in VS Code (WSL)", icon: "Code" },
+  zed: { title: "Open in Zed (WSL)", icon: "SquareCode" },
   explorer: { title: "Open in Explorer", icon: "FolderOpen" },
 };
 

@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
+import { userInfo } from "node:os";
 import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
@@ -9,6 +10,9 @@ const execFileAsync = promisify(execFile);
 
 const windowsCommands: Record<OpenTarget, string> = {
   vscode: "code",
+  // Zed's CLI binary, not its `zed` shell script: the script reads the user from $USER,
+  // which a daemon started by systemd may not have.
+  zed: "zed.exe",
   explorer: "explorer.exe",
 };
 
@@ -85,6 +89,14 @@ export async function openInWindows({
 
   const distro = distroName(windowsPath);
   if (!distro) throw new Error("Cannot determine the WSL distro name");
+
+  if (target === "zed") {
+    // Open the Linux path through Zed's WSL remoting as the daemon's user, like Zed's own
+    // `zed` launcher does when run inside WSL.
+    await launch(command, ["--wsl", `${userInfo().username}@${distro}`, directory]);
+    return { windowsPath };
+  }
+
   // VS Code's launcher script only takes its WSL path when this variable is set,
   // and a daemon started by systemd does not have it.
   await launch(command, ["--remote", `wsl+${distro}`, directory], {

@@ -1,7 +1,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
-export const openTargets = ["vscode", "explorer"] as const;
+export const openTargets = ["vscode", "zed", "explorer"] as const;
 export type OpenTarget = (typeof openTargets)[number];
 
 export const probeRpc = defineRpc({
